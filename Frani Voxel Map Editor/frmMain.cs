@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace Frani_Voxel_Map_Editor {
+
     public enum DrawTypes {
         PENCIL = 0,
         BUCKET = 1
@@ -21,7 +22,7 @@ namespace Frani_Voxel_Map_Editor {
         private int currentLayer = 0;
 
         private DrawTypes drawType;
-        private Image drawImage;
+        private TileTypes tileType;
 
         public frmMain(Map loadedMap = null) {
             InitializeComponent();
@@ -29,50 +30,50 @@ namespace Frani_Voxel_Map_Editor {
             map = loadedMap != null ? loadedMap : new Map(20, 20, 6);
 
             drawType = DrawTypes.PENCIL;
-            drawImage = imgVoid.Image;
+            tileType = TileTypes.VOID;
 
             CreateGrid(map, currentLayer);
         }
 
-        private void tile_Click(object sender, EventArgs e) {
-            PictureBox tile = (PictureBox)sender;
+        #region Grid
+        private void grid_Click(object sender, EventArgs e) {
+            PictureBox gridTile = (PictureBox)sender;
+            string[] tileCoords = gridTile.Name.Substring(4).Split('-');
+            int x = Convert.ToInt32(tileCoords[0]);
+            int y = Convert.ToInt32(tileCoords[1]);
+            int z = Convert.ToInt32(tileCoords[2]);
+
+            Tile tile = map.tiles[z][y][x];
 
             if (drawType == DrawTypes.PENCIL) {
-                tile.Image = drawImage;
+                tile.type = tileType;
+                gridTile.Image = GetImageFromTileType(tileType);
+            }
+
+            if (drawType == DrawTypes.BUCKET) {
+                List<Tile> tilesToPaint = map.GetTilesToPaint(tile);
+
+                foreach (Tile tileToPaint in tilesToPaint) {
+                    tileToPaint.type = tileType;
+                }
+                tile.type = tileType;
+
+                CreateGrid(map, currentLayer);
             }
         }
 
         private void CreateGrid(Map map, int currentLayer) {
-            grid = new List<PictureBox>();
+            ClearGrid();
 
             for (int y = 0; y < map.height; y++) {
                 for (int x = 0; x < map.width; x++) {
-                    int localIndex = x + y * map.width; //index in 2D space, just x & y coordinates
-                    int globalIndex = x + y * map.width + currentLayer * map.width * map.height; //index in 3D space, x & y & z coordinates
 
                     PictureBox tile = new PictureBox();
-                    tile.Name = "tile" + localIndex.ToString();
+                    tile.Name = "tile" + x + "-" + y + "-" + currentLayer;
                     tile.Location = new Point(32 * x, 32 * y);
                     tile.Size = new Size(32, 32);
-                    tile.Click += new EventHandler(tile_Click);
-
-                    switch (map.tiles[globalIndex].type) {
-                        case TileTypes.SOIL:
-                            tile.Image = imgSoil.Image;
-                            break;
-                        case TileTypes.GRASS:
-                            tile.Image = imgGrass.Image;
-                            break;
-                        case TileTypes.SAND:
-                            tile.Image = imgSand.Image;
-                            break;
-                        case TileTypes.WATER:
-                            tile.Image = imgWater.Image;
-                            break;
-                        default:
-                            tile.Image = imgVoid.Image;
-                            break;
-                    }
+                    tile.Click += new EventHandler(grid_Click);
+                    tile.Image = GetImageFromTileType(map.tiles[currentLayer][y][x].type);
 
                     grid.Add(tile);
                 }
@@ -83,13 +84,37 @@ namespace Frani_Voxel_Map_Editor {
             }
         }
 
-        private void RefreshGrid(Map map, int currentLayer) {
+        private void ClearGrid() {
+            if (grid == null) {
+                grid = new List<PictureBox>();
+                return;
+            }
+
             foreach (PictureBox tile in grid) {
                 this.Controls.Remove(tile);
             }
 
-            CreateGrid(map, currentLayer);
+            grid = new List<PictureBox>();
         }
+
+        #endregion
+
+        #region Helper Functions
+        private Image GetImageFromTileType(TileTypes type) {
+            switch (type) {
+                case TileTypes.SOIL:
+                    return imgSoil.Image;
+                case TileTypes.GRASS:
+                    return imgGrass.Image;
+                case TileTypes.SAND:
+                    return imgSand.Image;
+                case TileTypes.WATER:
+                    return imgWater.Image;
+                default:
+                    return imgVoid.Image;
+            }
+        }
+        #endregion
 
         #region Buttons
         private void btnSave_Click(object sender, EventArgs e) {
@@ -104,32 +129,34 @@ namespace Frani_Voxel_Map_Editor {
             drawType = DrawTypes.BUCKET;
         }
 
-        private void btnCopyUp_Click(object sender, EventArgs e) {
-
-        }
-
-        private void btnCopyDown_Click(object sender, EventArgs e) {
-
-        }
-
         private void imgVoid_Click(object sender, EventArgs e) {
-            drawImage = imgVoid.Image;
+            tileType = TileTypes.VOID;
         }
 
         private void imgSoil_Click(object sender, EventArgs e) {
-            drawImage = imgSoil.Image;
+            tileType = TileTypes.SOIL;
         }
 
         private void imgGrass_Click(object sender, EventArgs e) {
-            drawImage = imgGrass.Image;
+            tileType = TileTypes.GRASS;
         }
 
         private void imgSand_Click(object sender, EventArgs e) {
-            drawImage = imgSand.Image;
+            tileType = TileTypes.SAND;
         }
 
         private void imgWater_Click(object sender, EventArgs e) {
-            drawImage = imgWater.Image;
+            tileType = TileTypes.WATER;
+        }
+
+        private void btnCopyUp_Click(object sender, EventArgs e) {
+            map.CopyLayer(currentLayer + 1, currentLayer);
+            CreateGrid(map, currentLayer);
+        }
+
+        private void btnCopyDown_Click(object sender, EventArgs e) {
+            map.CopyLayer(currentLayer - 1, currentLayer);
+            CreateGrid(map, currentLayer);
         }
 
         private void btnUp_Click(object sender, EventArgs e) {
@@ -139,7 +166,7 @@ namespace Frani_Voxel_Map_Editor {
 
             currentLayer++;
             lblLayer.Text = currentLayer.ToString();
-            RefreshGrid(map, currentLayer);
+            CreateGrid(map, currentLayer);
         }
 
         private void btnDown_Click(object sender, EventArgs e) {
@@ -149,12 +176,12 @@ namespace Frani_Voxel_Map_Editor {
 
             currentLayer--;
             lblLayer.Text = currentLayer.ToString();
-            RefreshGrid(map, currentLayer);
+            CreateGrid(map, currentLayer);
         }
 
         private void btnSaveDimensions_Click(object sender, EventArgs e) {
             map.Resize(Convert.ToInt32(txtWidth.Text), Convert.ToInt32(txtHeight.Text), Convert.ToInt32(txtLayers.Text));
-            RefreshGrid(map, currentLayer);
+            CreateGrid(map, currentLayer);
         }
 
         #endregion
